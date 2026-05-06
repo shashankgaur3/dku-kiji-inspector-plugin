@@ -1,0 +1,43 @@
+/* This file is the descriptor for custom agent sae-feature-explain-agent */
+{
+    "meta" : {
+        "label": "Kiji Inspector Agent",
+        "description": "This agent can connect to a Kiji inspectior compatible LLM endpoint & can write the explanations in a table",
+        "icon": "fas fa-magic"
+    },
+    "supportsImageInputs": false,
+
+    "params": [
+        {
+            "name": "llm_endpoint",
+            "label": "LLM Model Endpoint",
+            "type": "STRING",
+            "description": "The OpenAI API compatible LLM endpoint URL which provides activation vectors in the response",
+            "mandatory": true,
+            "defaultValue": "http://127.0.0.1:8000/v1/chat/completions"
+        },
+        {
+            "name": "llm_model_name",
+            "label": "LLM Model Name",
+            "type": "STRING",
+            "description": "The name/identifier of the LLM model to use",
+            "mandatory": true,
+            "defaultValue": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        {
+            "name": "postgres_connection",
+            "label": "Connection",
+            "type": "CONNECTION",
+            "mandatory": true,
+            "allowedConnectionTypes": ["PostgreSQL"],
+            "description": "Connection to use for SAE Table persistence"
+        },
+        {
+            "name": "activations_table",
+            "label": "Features Table Name",
+            "type": "STRING",
+            "description": "The name of the table to write the feature explanations from the LLM",
+            "defaultValue": "features_master"
+        }
+    ]
+}

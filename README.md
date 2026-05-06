@@ -1,133 +1,245 @@
-# Plugin Template
+# Kiji Inspector Plugin
 
-This repository is a template for developers to create Dataiku DSS plugins from GitHub.
+A Dataiku DSS plugin for deploying and managing Kiji Inspector models with activation layer inspection capabilities on Kubernetes clusters.
 
-Use it and adapt it as you wish, and have fun with Dataiku!
+## Overview
 
+The Kiji Inspector Plugin enables users to:
+- Deploy VLLM models with activation inspection capabilities to Kubernetes clusters
+- Manage deployed services (list, inspect, remove)
+- Use a custom LLM agent that captures and persists activation explanations to a database
+- Analyze model behavior through Sparse Autoencoders (SAE) feature explanations
 
-# How to test your plugin
+## Features
 
-We recommend supporting your development cycle with unit and integration tests.
-To operate integration tests, you will need the help of the `dataiku-plugin-tests-utils` package to automate their executions while targeting dedicated DSS instances.
+### 1. Kiji Inspector Deployer (Macro)
 
-`dataiku-plugin-tests-utils` will be installed as a `pytest plugin`. Install that package inside an environment dedicated to integration tests; otherwise, `pytest` will complain about unused fixtures inside your unit tests.
+Deploy and manage VLLM containers with activation layer inspection on Kubernetes clusters.
 
-# How to install in your plugin
+**Actions:**
+- **Deploy**: Create a new Kiji service deployment
+- **Inspect**: List and view details of deployed services
+- **Remove**: Delete an existing Kiji service
 
-To install the `dataiku-plugin-tests-utils` package for your plugins, use the following line depending on your preferred way to managed packages.
+**Configuration Options:**
 
-## Using requirements.txt
+#### Service Configuration
+- **Service Name**: Unique identifier for the deployment (default: `kiji-vllm`)
+- **Namespace**: Kubernetes namespace (default: `kiji-services`)
 
-### Development
+#### Container Configuration
+- **Container Image**: Docker image for VLLM with activations support
+- **Image Tag**: Version/tag of the container image
+
+#### Model Configuration
+- **Model Name**: HuggingFace model identifier (e.g., `google/gemma-4-E4B-it`)
+- **Activation Layers**: Comma-separated layer indices to inspect (e.g., `8` or `8,16,24`)
+- **Activation Explanation Top-K**: Number of top activations to explain (1-100)
+- **Tensor Parallel Size**: Number of GPUs for tensor parallelism (1-8)
+- **VLLM dtype**: Data type for model weights (auto, float16, bfloat16, float32)
+
+#### Resource Configuration
+- **Replicas**: Number of pod replicas (1-8)
+- **GPU Devices**: Number of GPU devices per replica (1-8)
+- **Use Fractional GPUs**: Enable Run:ai scheduler for fractional GPU allocation
+  - GPU Fraction: Percentage of GPU per replica (e.g., 0.5 = 50%)
+  - Dynamic GPU Fraction: Maximum resource consumption limit
+- **CPU Request**: CPU allocation (e.g., `4` or `4000m`)
+- **Memory Request**: Memory allocation (e.g., `16Gi`)
+- **Node Selector**: Optional node label for pod placement (format: `key=value`)
+
+#### Service Exposition
+- **NodePort**: Expose service on a static port on each node (external access)
+- **ClusterIP**: Internal-only access within the cluster
+- **LoadBalancer**: Provision an external load balancer (if supported by cluster)
+- **Service Port**: Port to expose the service (default: 8000)
+
+### 2. Kiji Inspector Agent
+
+A custom LLM agent that integrates with deployed Kiji Inspector services to capture activation explanations.
+
+**Configuration:**
+- **LLM Endpoint**: URL of the Kiji-compatible OpenAI API endpoint
+- **Model Name**: Model identifier (must match the deployed service)
+- **PostgreSQL Connection**: Database connection for persisting feature explanations
+- **Features Table Name**: Table for storing activation explanations (default: `features_master`)
+
+**Functionality:**
+- Sends chat completion requests to the Kiji Inspector endpoint
+- Extracts activation explanations from model responses
+- Automatically creates and manages a PostgreSQL table with schema:
+  - `timestamp_ms`: Request timestamp
+  - `messages`: Input messages (JSON)
+  - `settings`: LLM settings (JSON)
+  - `response`: Complete response (JSON)
+  - `layer_id`: Activation layer identifier
+  - `feature_id`: Feature index
+  - `description`: Human-readable feature explanation
+  - `activation`: Activation strength value
+- Provides tracing and logging for debugging
+
+## Prerequisites
+
+1. **Dataiku DSS** with Kubernetes cluster integration
+2. **Kubernetes Cluster** with:
+   - GPU support (NVIDIA GPUs)
+   - Sufficient resources for VLLM workloads
+   - Optional: Run:ai scheduler (for fractional GPU support)
+3. **PostgreSQL Database** (for agent feature persistence)
+4. **Container Registry** access to VLLM activation-enabled images
+
+## Installation
+
+1. Download or clone the plugin to your Dataiku instance
+2. Install the plugin from the Dataiku Plugin Store or via the UI:
+   - Administration → Plugins → Add Plugin
+   - Select the plugin directory
+
+## Usage
+
+### Deploying a Kiji Service
+
+1. Navigate to any Dataiku project
+2. Go to **Macros** → **Kiji Inspector (VLLM Activations)**
+3. Select your Kubernetes cluster
+4. Choose **Action**: "Kiji Service: Deploy"
+5. Configure your deployment parameters
+6. Click **Run Macro**
+7. Note the endpoint URL displayed in the results (you'll need this for the agent)
+
+**Endpoint Format:**
+- Pod Endpoint (recommended): `http://<pod-ip>:8000/v1/chat/completions`
+- DNS Name: `http://<service-name>.<namespace>.svc.cluster.local:8000/v1/chat/completions`
+- ClusterIP: `http://<cluster-ip>:8000/v1/chat/completions`
+- NodePort: `http://<node-ip>:<nodeport>/v1/chat/completions`
+
+### Using the Kiji Inspector Agent
+
+1. Create or edit a Visual Agent
+2. Select **Kiji Inspector Agent** as the LLM type
+3. Configure the agent:
+   - **LLM Endpoint**: Use the endpoint from the deployment step
+   - **Model Name**: Must match the deployed model
+   - **PostgreSQL Connection**: Select your database connection
+   - **Features Table**: Specify table name for explanations
+4. Use the agent in conversations or applications
+5. Query the features table to analyze activation patterns
+
+### Managing Services
+
+**Inspect Services:**
+1. Run the macro with Action: "Kiji Service: Inspect"
+2. View all deployed services in the namespace with:
+   - Service names and endpoints
+   - Replica counts
+   - Pod status
+   - Available connection options
+
+**Remove Services:**
+1. Run the macro with Action: "Kiji Service: Remove"
+2. Specify the service name to delete
+3. Both deployment and service will be removed from the cluster
+
+## Architecture
 
 ```
-git+https://github.com/dataiku/dataiku-plugin-tests-utils.git@<BRANCH>#egg=dataiku-plugin-tests-utils
+┌─────────────────────┐
+│   Dataiku DSS       │
+│                     │
+│  ┌──────────────┐   │
+│  │ Kiji Agent   │   │──────┐
+│  └──────────────┘   │      │
+└─────────────────────┘      │
+                             │ HTTP Requests
+                             │
+┌────────────────────────────▼──────────────────────┐
+│              Kubernetes Cluster                   │
+│                                                    │
+│  ┌──────────────────────────────────────────┐    │
+│  │  Kiji VLLM Service (Deployment)          │    │
+│  │  ┌────────────────────────────────────┐  │    │
+│  │  │  VLLM Container                    │  │    │
+│  │  │  - Model Inference                 │  │    │
+│  │  │  - Activation Layer Inspection     │  │    │
+│  │  │  - SAE Feature Explanations        │  │    │
+│  │  └────────────────────────────────────┘  │    │
+│  └──────────────────────────────────────────┘    │
+│                                                    │
+│  Service Endpoints:                               │
+│  - NodePort, ClusterIP, or LoadBalancer           │
+└───────────────────────────────────────────────────┘
+                             │
+                             │ Explanations
+                             ▼
+                    ┌─────────────────┐
+                    │   PostgreSQL    │
+                    │  Features Table │
+                    └─────────────────┘
 ```
 
-Replace `<BRANCH>` with the most accurate value
+## Troubleshooting
 
-### Stable release
+### Service Not Reachable
 
-```
-git+https://github.com/dataiku/dataiku-plugin-tests-utils.git@releases/tag/<RELEASE_VERSION>#egg=dataiku-plugin-tests-utils
-```
+If the deployed service endpoint is not accessible:
 
-Replace `<RELEASE_VERSION>` with the most accurate value
+1. **Wait for startup**: VLLM services can take several minutes to fully initialize
+2. **Check pod status**: Run "Kiji Service: Inspect" to verify pods are running
+3. **Try different endpoints**: The inspect results show multiple endpoint options
+   - Start with the Pod Endpoint (most direct)
+   - Try DNS name if inside the cluster
+   - Use ClusterIP for internal access
+4. **Verify network policies**: Ensure no NetworkPolicies are blocking traffic
+5. **Check logs**: Use `kubectl logs -n <namespace> <pod-name>` to view container logs
 
-## Using pipfile
+### Agent Connection Issues
 
-Put the following line under `[dev-packages]` section
+- Verify the endpoint URL is correct and includes `/v1/chat/completions`
+- Ensure the model name in the agent matches the deployed model
+- Check that the Dataiku instance can reach the Kubernetes network
+- Test connectivity using `curl` from the Dataiku host
 
-### Development cycle
+### Feature Table Issues
 
-```
-dku-plugin-test-utils = {git = "https://github.com/dataiku/dataiku-plugin-tests-utils.git", ref = "<BRANCH>"}
-```
+- Ensure the PostgreSQL connection is valid
+- Verify the Dataiku service account has table creation permissions
+- Check that the dataset is created in the correct project
+- The table is auto-created on first agent use
 
-### Stable release
-TBD
+## Examples
 
-## Dev env
-
-### Config
-
-First, ensure that you have personal API Keys for the DSS you want to target.
-Secondly, define a config file that will give the DSS you will target.
-```
-{
-	"DSSX":
-	{
-		"url": ".......",
-		"users": {
-			"usrA": "api_key",
-			"usrB": "api_key",
-			"default": "usrA"
-		},
-        "python_interpreter": ["PYTHON27", "PYTHON36"]
-
-	},
-	"DSSY":
-	{
-		"url": "......",
-		"users": {
-			"usrA": "api_key",
-			"usrB": "api_key",
-			"default": "usrB"
-		},
-        "python_interpreter": ["PYTHON36", "PYTHON39"]
-	}
-}
+### Example 1: Deploy a Gemma Model with Layer 8 Inspection
 
 ```
-
-**BEWARE**: User names must be identical in the configuration file between the different DSS instances.
-Then, set the environment variable `PLUGIN_INTEGRATION_TEST_INSTANCE` to point to the config file.
-
-# How to use the package
-
-## General information
-
-To use the package in your test files:
-```python
-import dku_plugin_test_utils
-import dku_plugin_test_utils.subpakcage.subsymbol
-```
-Look at the next section for more information about potential `subpackage` and `subsymbol`.
-
-The python integration test files are indirections towards the "real" tests written as DSS scenarios on DSS instances.
-The python test function triggers the targeted DSS scenario and waits either for its successful or failed completion.
-Thence your test function should look like the following snippet :
-```python
-# Mandatory imports
-from dku_plugin_test_utils import dss_scenario
-
-def test_run_some_dss_scenario(user_dss_clients):
-     dss_scenario.run(user_clients, 'PROJECT_KEY', 'scenario_id', user="user1")
-
-# [... other tests ...]
-```
-With:
-- `user_dss_clients`: representing the DSS client corresponding to the desired user.
-- `PROJECT_KEY`: The project that holds the test scenarios
-- `scenario_id`: The test scenario to run
-- `user`: Specify the user to run the scenario with. It is an optional argument. By default, it is "default".
-
-## How to generate a graphical report with Allure for integration tests
-
-For each plugin, a folder named `allure_report` should exist inside the `test` folder; reports will be generated inside that folder.
-To generate the graphical report, you must have Allure installed on your system as described [on their installation guide](https://docs.qameta.io/allure/#_manual_installation). Once the installation is done, run the following :
-```shell
-allure serve path/to/the/allure_report/dir/inside/you/plugin/test/folder/
+Service Name: kiji-gemma
+Model: google/gemma-4-E4B-it
+Activation Layers: 8
+Top-K: 5
+GPUs: 1
+Exposition: NodePort
 ```
 
-# Package hierarchy
+### Example 2: Multi-layer Inspection with Run:ai
 
-As it is a tooling package for integration tests, it will aggregate different packages with different goals. 
-The following hierarchy exposes the different sub-package contained in `dku_plugin_test_utils` with their aim 
-and the list of public symbols:
+```
+Service Name: kiji-multi-layer
+Model: google/gemma-4-E4B-it
+Activation Layers: 8,16,24
+Top-K: 10
+Use Fractional GPUs: Yes
+GPU Fraction: 0.5
+Dynamic GPU Fraction: 0.8
+Exposition: ClusterIP
+```
 
-- `run_config`:
-  - `ScenarioConfiguration`: Class exposing the parsed run configuration as a python dictionary.
-  - `PluginInfo`: Parse the plugin.json and the code-env desc.json files to extract plugin metadata as a python dictionary.
-- `dss_scenario`: 
-  - `run`: Run the target DSS scenario and wait for its completion (either success or failure).
+## License
+
+Apache Software License
+
+## Support
+
+For issues, questions, or contributions, please contact the plugin author: shashank.gaur
+
+## Version
+
+Current version: 0.0.1

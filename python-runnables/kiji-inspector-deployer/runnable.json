@@ -1,0 +1,251 @@
+{
+    "meta": {
+        "label": "Kiji Inspector (VLLM Activations)",
+        "description": "Deploy and manage Kiji inspector supported models with activation layer inspection capabilities.",
+        "icon": "icon-puzzle-piece"
+    },
+
+    "impersonate": false,
+    "permissions": [],
+    "resultType": "HTML",
+
+    "macroRoles": [
+        { "type":"CLUSTER", "targetParamsKey":"cluster_id", "limitToSamePlugin":false }
+    ],
+
+    "params": [
+        {
+            "name": "cluster_id",
+            "label": "Cluster",
+            "type": "CLUSTER",
+            "description": "Kubernetes cluster in Dataiku",
+            "mandatory": true
+        },
+        {
+            "name": "macro_action",
+            "label": "Action",
+            "type": "SELECT",
+            "selectChoices" : [
+                { "value": "kiji_service_add", "label": "Kiji Service: Deploy"},
+                { "value": "kiji_service_list", "label": "Kiji Service: Inspect"},
+                { "value": "kiji_service_rm", "label": "Kiji Service: Remove"}
+            ],
+            "mandatory": true
+        },
+
+        {
+            "type": "SEPARATOR",
+            "label": "Kiji Service Configuration",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add' || model.macro_action == 'kiji_service_list' || model.macro_action == 'kiji_service_rm'"
+        },
+        {
+            "name": "service_name",
+            "label": "Service name",
+            "type": "STRING",
+            "description": "Unique name for this Kiji service deployment",
+            "mandatory": true,
+            "defaultValue": "kiji-vllm",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add' || model.macro_action == 'kiji_service_rm'"
+        },
+        {
+            "name": "namespace",
+            "label": "Kubernetes namespace",
+            "type": "STRING",
+            "mandatory": true,
+            "defaultValue": "kiji-services",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add' || model.macro_action == 'kiji_service_list' || model.macro_action == 'kiji_service_rm'"
+        },
+        {
+            "type": "SEPARATOR",
+            "label": "Container Configuration",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "container_image",
+            "label": "Container image",
+            "type": "STRING",
+            "description": "Docker image for VLLM with activations support",
+            "mandatory": true,
+            "defaultValue": "vllm-extras-activations",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "container_tag",
+            "label": "Image tag",
+            "type": "STRING",
+            "description": "Container image tag/version",
+            "mandatory": true,
+            "defaultValue": "latest",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "type": "SEPARATOR",
+            "label": "Model Configuration",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "model_name",
+            "label": "Model name",
+            "type": "STRING",
+            "description": "HuggingFace model name (e.g., google/gemma-4-E4B-it)",
+            "mandatory": true,
+            "defaultValue": "google/gemma-4-E4B-it",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "activation_layers",
+            "label": "Activation layers",
+            "type": "STRING",
+            "description": "Comma-separated list of layer indices to inspect (e.g., 8 or 8,16,24)",
+            "mandatory": true,
+            "defaultValue": "8",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "activation_explanation_top_k",
+            "label": "Activation explanation top-K",
+            "type": "INT",
+            "description": "Number of top activations to explain",
+            "mandatory": true,
+            "defaultValue": 5,
+            "minI": 1,
+            "maxI": 100,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "tensor_parallel_size",
+            "label": "Tensor parallel size",
+            "type": "INT",
+            "description": "Number of GPUs to use for tensor parallelism",
+            "mandatory": true,
+            "defaultValue": 1,
+            "minI": 1,
+            "maxI": 8,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "vllm_dtype",
+            "label": "VLLM dtype",
+            "type": "SELECT",
+            "description": "Data type for model weights",
+            "selectChoices": [
+                { "value": "auto", "label": "auto"},
+                { "value": "float16", "label": "float16"},
+                { "value": "bfloat16", "label": "bfloat16"},
+                { "value": "float32", "label": "float32"}
+            ],
+            "mandatory": true,
+            "defaultValue": "bfloat16",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "type": "SEPARATOR",
+            "label": "Resource Configuration",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "replicas",
+            "label": "Replicas",
+            "type": "INT",
+            "description": "Number of pod replicas",
+            "minI": 1,
+            "maxI": 8,
+            "defaultValue": 1,
+            "mandatory": true,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "num_gpu_devices",
+            "label": "Number of GPU devices",
+            "description": "Number of GPU devices per replica",
+            "type": "INT",
+            "minI": 1,
+            "maxI": 8,
+            "defaultValue": 1,
+            "mandatory": true,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "use_runai",
+            "label": "Use fraction GPUs",
+            "description": "Enable fractional GPU allocation (requires Run:ai scheduler)",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": false,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "gpu_fraction",
+            "label": "GPU fraction to use",
+            "description": "Percent of whole GPU per replica (e.g., 0.5 = 50%)",
+            "type": "DOUBLE",
+            "defaultValue": 0.5,
+            "mandatory": false,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add' && model.use_runai == true"
+        },
+        {
+            "name": "dynamic_gpu_fraction",
+            "label": "Dynamic GPU fraction limit",
+            "description": "Maximum percentage a resource can consume (e.g., 0.8 = 80%). Leave blank to disable dynamic allocation.",
+            "type": "DOUBLE",
+            "defaultValue": 0.8,
+            "mandatory": false,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add' && model.use_runai == true"
+        },
+        {
+            "name": "cpu_request",
+            "label": "CPU request",
+            "type": "STRING",
+            "description": "CPU request (e.g., '2' or '2000m')",
+            "mandatory": false,
+            "defaultValue": "4",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "memory_request",
+            "label": "Memory request",
+            "type": "STRING",
+            "description": "Memory request (e.g., '8Gi')",
+            "mandatory": false,
+            "defaultValue": "16Gi",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "node_selector",
+            "label": "Node selector",
+            "description": "(optional) Provide a node label 'key=value' pair",
+            "type": "STRING",
+            "mandatory": false,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "type": "SEPARATOR",
+            "label": "Service Exposition",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "exposition_mode",
+            "label": "Exposition mode",
+            "type": "SELECT",
+            "selectChoices" : [
+                { "value": "nodeport", "label": "NodePort (Service)"},
+                { "value": "clusterip", "label": "ClusterIP (Internal only)"},
+                { "value": "loadbalancer", "label": "LoadBalancer"}
+            ],
+            "mandatory": true,
+            "defaultValue": "nodeport",
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        },
+        {
+            "name": "service_port",
+            "label": "Service port",
+            "type": "INT",
+            "description": "Port to expose the service on",
+            "mandatory": true,
+            "defaultValue": 8000,
+            "minI": 1,
+            "maxI": 65535,
+            "visibilityCondition": "model.macro_action == 'kiji_service_add'"
+        }
+    ]
+}
